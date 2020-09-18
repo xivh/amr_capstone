@@ -11,17 +11,30 @@ import math
 import rospy
 from geometry_msgs.msg import Twist
 from sensor_msgs.msg import Imu
+from tf.transformations import euler_from_quaternion
 
-# Parameters
+# Parameters need to adjust
 k = 0.1  # look forward gain
 Lfc = 2.0  # [m] look-ahead distance
 Kp = 1.0  # speed proportional gain
 dt = 0.1  # [s] time tick
 WB = 2.9  # [m] wheel base of vehicle
 
-def imuCallback(data):
-    ang_vel = data.angular_velocity.z
-    rospy.loginfo("Angular Velocity = %f", data.angular_velocity.z)
+def statesCallback(data):
+    # ang_vel = data.angular_velocity.z
+    global gx, gy, gv, gyaw
+    gx = data.pose.position.x
+    gy = data.pose.position.y
+    gv = data.twist.linear.x
+    quaternion = (
+        data.pose.orientation.x,
+        data.pose.orientation.y,
+        data.pose.orientation.z,
+        data.pose.orientation.w
+    )
+    euler = tf.transformations.euler_from_quaternion(quaternion)
+    gyaw = euler[2]
+    # rospy.loginfo("Angular Velocity = %f", data.angular_velocity.z)
 
 class State:
 
@@ -133,10 +146,10 @@ def pure_pursuit_steer_control(state, trajectory, pind):
 
 def main():
     #  change the topic
-    vel_pub = rospy.Publisher('/', Twist, queue_size=1)
+    vel_pub = rospy.Publisher('/husky_velocity_controller/cmd_vel', Twist, queue_size=1)
     rospy.init_node('pure_pursuit', anonymous = True)
-    #  change the topic
-    rospy.Subscriber('/', Imu, imuCallback)
+    #  change the topic/ is the format right?
+    rospy.Subscriber('/gazebo/model_states', ModelStates, statesCallback)
     rate = rospy.Rate(10)
     vel = Twist()
 
@@ -149,7 +162,7 @@ def main():
     T = 100.0  # max simulation time
 
     # initial state
-    state = State(x=-0.0, y=-3.0, yaw=0.0, v=0.0)
+    state = State(x=gx, y=gy, yaw=gyaw, v=gv)
 
     lastIndex = len(cx) - 1
     time = 0.0
@@ -173,6 +186,7 @@ def main():
         rate.sleep()
 
         time += dt
+        state = State(x=gx, y=gy, yaw=gyaw, v=gv) # is this dumb
         states.append(time, state)
 
     # Test
