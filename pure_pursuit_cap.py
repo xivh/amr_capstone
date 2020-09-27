@@ -7,7 +7,6 @@ from nav_msgs.msg import Odometry
 from math import pow, atan2, sqrt, ceil
 from tf.transformations import euler_from_quaternion
 
-
 def statesCallback(data):
     global x, y, v, yaw
     x = data.pose.pose.position.x
@@ -22,11 +21,9 @@ def statesCallback(data):
     euler = euler_from_quaternion(quaternion)
     yaw = euler[2]
 
-
 def robotAtGoal(robx, roby, goalx, goaly):
     distance_tolerance = 0.5
     return sqrt(pow((goalx - robx), 2) + pow((goaly - roby), 2)) <= distance_tolerance
-
 
 def getLookAheadPoint(waypoints, robx, roby, lookAheadDistance, lastIndex, lastFractionalIndex, lastLookAhead):
     for j in range(lastIndex, len(waypoints) - 1):
@@ -51,9 +48,6 @@ def getLookAheadPoint(waypoints, robx, roby, lookAheadDistance, lastIndex, lastF
             return (E[0] + t2*d, E[1] + t2*d), j, j+t2
         return lastLookAhead
 
-
-
-
 def injectPoints(waypoints):
     spacing = 0.2
     new_points = []
@@ -70,7 +64,6 @@ def injectPoints(waypoints):
         new_points.append(end_point)
     return new_points
 
-
 def smoothPath(path): # path is [[x1, y1], ..., [xend, yend]]
     b = 0.75
     a = 1-b
@@ -86,7 +79,6 @@ def smoothPath(path): # path is [[x1, y1], ..., [xend, yend]]
                                                                      - (2.0*newPath[i][j]))
                 change += abs(aux-newPath[i][j])
     return newPath
-
 
 def main():
     rospy.init_node('pure_pursuit_cap', anonymous=True)
@@ -135,7 +127,6 @@ def main():
         rate.sleep()
         print("before spin")
         rospy.spin()
-
 
 if __name__ == "__main__":
     main()
