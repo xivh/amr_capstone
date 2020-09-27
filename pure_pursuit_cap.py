@@ -49,7 +49,7 @@ def getLookAheadPoint(waypoints, robx, roby, lookAheadDistance, lastIndex, lastF
         return lastLookAhead
 
 def injectPoints(waypoints):
-    spacing = 0.2
+    spacing = 5
     new_points = []
     for j in range(0, len(waypoints)-1):
         start_point = waypoints[j]
