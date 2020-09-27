@@ -4,19 +4,28 @@ import rospy
 from geometry_msgs.msg import Twist
 import numpy as np
 from nav_msgs.msg import Odometry
+from gazebo_msgs.msg import ModelStates
 from math import pow, atan2, sqrt, ceil
 from tf.transformations import euler_from_quaternion
 
+x = 0.0
+y = 0.0
+v = 0.0
+yaw = 0.0
+
 def statesCallback(data):
     global x, y, v, yaw
-    x = data.pose.pose.position.x
-    y = data.pose.pose.position.y
-    v = data.twist.twist.linear.x
+    # find index of slash
+    name = data.name
+    index = name.index("/")
+    x = data.pose[index].position.x
+    y = data.pose[index].position.y
+    v = data.twist[index].linear.x
     quaternion = (
-        data.pose.pose.orientation.x,
-        data.pose.pose.orientation.y,
-        data.pose.pose.orientation.z,
-        data.pose.pose.orientation.w
+        data.pose[index].orientation.x,
+        data.pose[index].orientation.y,
+        data.pose[index].orientation.z,
+        data.pose[index].orientation.w
     )
     euler = euler_from_quaternion(quaternion)
     yaw = euler[2]
@@ -43,10 +52,10 @@ def getLookAheadPoint(waypoints, robx, roby, lookAheadDistance, lastIndex, lastF
         t1 = (-b - discriminant)/(2*a)
         t2 = (-b + discriminant)/(2*a)
         if 0 <= t1 <= 1 and j+t1 > lastFractionalIndex:
-            return (E[0] + t1*d, E[1] + t1*d), j, j+t1
+            return (E[0] + t1*d[0], E[1] + t1*d[1]), j, j+t1
         if 0 <= t2 <= 1 and j+t2 > lastFractionalIndex:
-            return (E[0] + t2*d, E[1] + t2*d), j, j+t2
-        return lastLookAhead
+            return (E[0] + t2*d[0], E[1] + t2*d[1]), j, j+t2
+        return lastLookAhead, 0, 0
 
 def injectPoints(waypoints):
     spacing = 5
@@ -56,7 +65,7 @@ def injectPoints(waypoints):
         end_point = waypoints[j+1]
         vector = (end_point[0] - start_point[0], end_point[1] - start_point[1])
         d = sqrt(pow(vector[0], 2)+pow(vector[1], 2))
-        num_points_that_fit = ceil(d/spacing)
+        num_points_that_fit = int(ceil(d/spacing))
         vector = (vector[0]/d * spacing, vector[1]/d * spacing)
         for i in range(0, num_points_that_fit):
             new_list = (start_point[0] + vector[0]*i, start_point[1] + vector[1]*i)
@@ -82,30 +91,32 @@ def smoothPath(path): # path is [(x1, y1), ..., (xend, yend)]
     return newPath
 
 def main():
+    #global x, y, v, yaw
     rospy.init_node('pure_pursuit_cap', anonymous=True)
     velocity_publisher = rospy.Publisher('/husky_velocity_controller/cmd_vel', Twist, queue_size=10)
-    rospy.Subscriber('/odometry/filtered', Odometry, statesCallback)
+    rospy.Subscriber('/gazebo/model_states', ModelStates, statesCallback)
     rate = rospy.Rate(10)
     vel_msg = Twist()
-    waypoints = [(0, 1), (8, 0)]
+    waypoints = [(10, 0), (20, 20)]
     path = injectPoints(waypoints)
     goals_x = [10]
     goals_y = [0]
-    lookAheadDistance = 20
+    lookAheadDistance = 9
     lastIndex = 0
     lastLookAheadIndex = 0
+    lastFractionalIndex = 0
+    lookAheadPoint = (0, 0)
     i = 0
-
     while not rospy.is_shutdown():
-        if robotAtGoal(x, y, goal_pose_x, goal_pose_y):  # switch to next goal or not
-            goal_pose_x = goals_x[i]
-            goal_pose_y = goals_y[i]
-            i += 1
+        #if robotAtGoal(x, y, goal_pose_x, goal_pose_y):  # switch to next goal or not
+        #    goal_pose_x = goals_x[i]
+        #    goal_pose_y = goals_y[i]
+        #    i += 1
 
-        lookAheadPoint, lastIndex, lastFractionalIndex = getLookAheadPoint(waypoints, x, y, lookAheadDistance,
-                                                              lastIndex, lastFractionalIndex, lookAheadPoint)
+        lookAheadPoint, lastIndex, lastFractionalIndex = getLookAheadPoint(waypoints, x, y, lookAheadDistance, lastIndex, lastFractionalIndex, lookAheadPoint)
         goal_pose_x = lookAheadPoint[0]
         goal_pose_y = lookAheadPoint[1]
+        print(lookAheadPoint)
         # main_logic to compute linear_x, angular_z
         # Proportional Controller
         # linear velocity in the x-axis:
@@ -118,16 +129,16 @@ def main():
         vel_msg.angular.x = 0
         vel_msg.angular.y = 0
         vel_msg.angular.z = 4 * (atan2(goal_pose_y - y, goal_pose_x - x) - yaw)
-        print("before publish")
+        #print("before publish")
 
         # Publishing our vel_msg
         velocity_publisher.publish(vel_msg)
         print("angular: %f", vel_msg.angular.z)
         print("linear: %f", vel_msg.linear.x)
-        print("before sleep")
+        #print("before sleep")
         rate.sleep()
-        print("before spin")
-        rospy.spin()
+        #print("before spin")
+        #rospy.spin() # vehicle will not
 
 if __name__ == "__main__":
     main()
