@@ -64,11 +64,11 @@ def injectPoints(waypoints):
         new_points.append(end_point)
     return new_points
 
-def smoothPath(path): # path is [[x1, y1], ..., [xend, yend]]
+def smoothPath(path): # path is [(x1, y1), ..., (xend, yend)]
     b = 0.75
     a = 1-b
     tolerance = 0.001
-    newPath = path
+    newPath = [list(point) for point in path] # tuples are immutable
     change = tolerance
     while change >= tolerance:
         change = 0
@@ -78,6 +78,7 @@ def smoothPath(path): # path is [[x1, y1], ..., [xend, yend]]
                 newPath[i][j] += a*(path[i][j] - newPath[i][j]) + b*(newPath[i-1][j] + newPath[i+1][j]
                                                                      - (2.0*newPath[i][j]))
                 change += abs(aux-newPath[i][j])
+    newPath = list(tuple(point) for point in newPath)
     return newPath
 
 def main():
