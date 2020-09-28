@@ -17,7 +17,8 @@ def statesCallback(data):
     global x, y, v, yaw
     # find index of slash
     name = data.name
-    index = name.index("/")
+    index = name.index("jackal")
+    #index = name.index("/")
     x = data.pose[index].position.x
     y = data.pose[index].position.y
     v = data.twist[index].linear.x
@@ -31,8 +32,11 @@ def statesCallback(data):
     yaw = euler[2]
 
 def robotAtGoal(robx, roby, goalx, goaly):
-    distance_tolerance = 0.5
-    return sqrt(pow((goalx - robx), 2) + pow((goaly - roby), 2)) <= distance_tolerance
+    distance_tolerance = 1
+    val = sqrt(pow((goalx - robx), 2) + pow((goaly - roby), 2)) 
+    
+    print("distance:", val, val <= distance_tolerance)
+    return val <= distance_tolerance
 
 def getLookAheadPoint(waypoints, robx, roby, lookAheadDistance, lastIndex, lastFractionalIndex, lastLookAhead):
     for j in range(lastIndex, len(waypoints) - 1):
@@ -46,17 +50,26 @@ def getLookAheadPoint(waypoints, robx, roby, lookAheadDistance, lastIndex, lastF
         b = np.dot(np.multiply(2, f), d)
         c = np.dot(f, f) - r*r
         discriminant = b*b - 4*a*c
+        
+        # this happens on the first waypoint, since the lookahead distance is smaller
         if discriminant < 0:
-            break
+            return lastLookAhead, lastIndex, lastFractionalIndex
+
         discriminant = sqrt(discriminant)
         t1 = (-b - discriminant)/(2*a)
         t2 = (-b + discriminant)/(2*a)
+        print('t guys', t1, t2)
         if 0 <= t1 <= 1 and j+t1 > lastFractionalIndex:
             return (E[0] + t1*d[0], E[1] + t1*d[1]), j, j+t1
         if 0 <= t2 <= 1 and j+t2 > lastFractionalIndex:
             return (E[0] + t2*d[0], E[1] + t2*d[1]), j, j+t2
-        return lastLookAhead, 0, 0
 
+        # this happens on the last waypoint. I'm not sure if j should be updated on the two
+        # return statements above? or if this solution is best - we should figure out why
+        # lookahead points aren't working for the first and last waypoint
+        return waypoints[lastIndex+1], j+1, lastFractionalIndex
+    return waypoints[-1], lastIndex, lastFractionalIndex
+        
 def injectPoints(waypoints):
     spacing = 5
     new_points = []
@@ -93,30 +106,33 @@ def smoothPath(path): # path is [(x1, y1), ..., (xend, yend)]
 def main():
     #global x, y, v, yaw
     rospy.init_node('pure_pursuit_cap', anonymous=True)
-    velocity_publisher = rospy.Publisher('/husky_velocity_controller/cmd_vel', Twist, queue_size=10)
+    velocity_publisher = rospy.Publisher('/jackal_velocity_controller/cmd_vel', Twist, queue_size=10)
+    #velocity_publisher = rospy.Publisher('/husky_velocity_controller/cmd_vel', Twist, queue_size=10)
     rospy.Subscriber('/gazebo/model_states', ModelStates, statesCallback)
     rate = rospy.Rate(10)
     vel_msg = Twist()
-    waypoints = [(10, 0), (20, 20)]
+    waypoints = [(10, 0), (0, 10), (10, 10), (0, 0)]
     path = injectPoints(waypoints)
-    goals_x = [10]
-    goals_y = [0]
-    lookAheadDistance = 9
+    # goals_x = [10]
+    # goals_y = [0]
+    lookAheadDistance = 2
     lastIndex = 0
     lastLookAheadIndex = 0
     lastFractionalIndex = 0
-    lookAheadPoint = (0, 0)
+    lookAheadPoint = waypoints[0]
     i = 0
     while not rospy.is_shutdown():
-        #if robotAtGoal(x, y, goal_pose_x, goal_pose_y):  # switch to next goal or not
-        #    goal_pose_x = goals_x[i]
-        #    goal_pose_y = goals_y[i]
-        #    i += 1
+        # print('goals:', waypoints[-1][0], waypoints[-1][1])
+        if robotAtGoal(x, y, waypoints[-1][0], waypoints[-1][1]) and lastIndex == len(waypoints) - 1: 
+           vel_msg.linear.x = 0
+           vel_msg.angular.z = 0
+           velocity_publisher.publish(vel_msg)
+           break 
 
         lookAheadPoint, lastIndex, lastFractionalIndex = getLookAheadPoint(waypoints, x, y, lookAheadDistance, lastIndex, lastFractionalIndex, lookAheadPoint)
         goal_pose_x = lookAheadPoint[0]
         goal_pose_y = lookAheadPoint[1]
-        print(lookAheadPoint)
+        print('lookahead:', lookAheadPoint, 'index:', lastIndex)
         # main_logic to compute linear_x, angular_z
         # Proportional Controller
         # linear velocity in the x-axis:
@@ -128,13 +144,13 @@ def main():
         # angular velocity in the z-axis:
         vel_msg.angular.x = 0
         vel_msg.angular.y = 0
-        vel_msg.angular.z = 4 * (atan2(goal_pose_y - y, goal_pose_x - x) - yaw)
+        vel_msg.angular.z = 2 * (atan2(goal_pose_y - y, goal_pose_x - x) - yaw)
         #print("before publish")
 
         # Publishing our vel_msg
         velocity_publisher.publish(vel_msg)
-        print("angular: %f", vel_msg.angular.z)
-        print("linear: %f", vel_msg.linear.x)
+        print("x: %f", x)
+        print("y: %f", y)
         #print("before sleep")
         rate.sleep()
         #print("before spin")
