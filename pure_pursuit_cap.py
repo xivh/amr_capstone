@@ -5,7 +5,7 @@ from geometry_msgs.msg import Twist
 import numpy as np
 from nav_msgs.msg import Odometry
 from gazebo_msgs.msg import ModelStates
-from math import pow, atan2, sqrt, ceil, sin, cos
+from math import pow, atan2, sqrt, ceil, sin, cos, pi
 from tf.transformations import euler_from_quaternion
 
 x = 0.0
@@ -33,11 +33,19 @@ def statesCallback(data):
     yaw = euler[2]
 
 
+def robotUnsafe(robx, roby, path):
+    safety_tolerance = 5
+    dists = [0]*len(path)
+    i = 0
+    for point in path:
+        dists[i] = qrt(pow((point[0] - robx), 2) + pow((point[1] - roby), 2))
+    val = min(dists)
+    return val > safety_tolerance
+
+
 def robotAtGoal(robx, roby, goalx, goaly):
     distance_tolerance = 1
     val = sqrt(pow((goalx - robx), 2) + pow((goaly - roby), 2))
-
-    print("distance:", val, val <= distance_tolerance)
     return val <= distance_tolerance
 
 
@@ -110,21 +118,18 @@ def smoothPath(path):  # path is [(x1, y1), ..., (xend, yend)]
 
 
 def main():
-    # global x, y, v, yaw
     rospy.init_node('pure_pursuit_cap', anonymous=True)
     velocity_publisher = rospy.Publisher('/jackal_velocity_controller/cmd_vel', Twist, queue_size=10)
     # velocity_publisher = rospy.Publisher('/husky_velocity_controller/cmd_vel', Twist, queue_size=10)
     rospy.Subscriber('/gazebo/model_states', ModelStates, statesCallback)
     rate = rospy.Rate(10)
     vel_msg = Twist()
-    angle = 0
+    angle = radians(20)
     branching_point = (10, 0)
     end_point = (branching_point[0] + 10*cos(angle), 10*sin(angle))
     #waypoints = [(10, 0), (0, 10), (10, 10), (0, 0)]
     waypoints = [branching_point, end_point]
     path = injectPoints(waypoints)
-    # goals_x = [10]
-    # goals_y = [0]
     lookAheadDistance = 2
     lastIndex = 0
     lastLookAheadIndex = 0
@@ -132,7 +137,13 @@ def main():
     lookAheadPoint = waypoints[0]
     i = 0
     while not rospy.is_shutdown():
-        # print('goals:', waypoints[-1][0], waypoints[-1][1])
+
+        if robotUnsafe (x, y, path):
+            vel_msg.linear.x = 0
+            vel_msg.angular.z = 0
+            velocity_publisher.publish(vel_msg)
+            break
+
         if robotAtGoal(x, y, waypoints[-1][0], waypoints[-1][1]) and lastIndex == len(waypoints) - 1:
             vel_msg.linear.x = 0
             vel_msg.angular.z = 0
@@ -144,12 +155,9 @@ def main():
                                                                            lookAheadPoint)
         goal_pose_x = lookAheadPoint[0]
         goal_pose_y = lookAheadPoint[1]
-        print('lookahead:', lookAheadPoint, 'index:', lastIndex)
-        # main_logic to compute linear_x, angular_z
-        # Proportional Controller
+
         # linear velocity in the x-axis:
-        # vel_msg.linear.x = 1.5 * sqrt(pow((goal_pose_x - x), 2) + pow((goal_pose_y - y), 2))
-        vel_msg.linear.x = 2
+        vel_msg.linear.x = 0.2
         vel_msg.linear.y = 0
         vel_msg.linear.z = 0
 
@@ -161,12 +169,7 @@ def main():
 
         # Publishing our vel_msg
         velocity_publisher.publish(vel_msg)
-        print("x: %f", x)
-        print("y: %f", y)
-        # print("before sleep")
         rate.sleep()
-        # print("before spin")
-        # rospy.spin() # vehicle will not
 
 
 if __name__ == "__main__":
