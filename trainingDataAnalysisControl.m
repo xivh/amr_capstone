@@ -9,11 +9,12 @@ topic2 = {'/odometry/filtered'};
   
 %bag1 = rosbag('ice_test.bag');
 %bag2 = rosbag('control_test.bag');
-bags = dir('*.bag'); % this calls/lists all bag files in directory
+path = '' % set the path to the directory with bag files, end with /
+bags = dir(strcat(path,'*.bag')); % this calls/lists all bag files in directory
 
 for i = 1:length(bags)
 
-    bag = rosbag(bags(i).name);
+    bag = rosbag(strcat(path,bags(i).name));
     bSel1 = select(bag,'Topic', topic1);
     %bSel2 = select(bag, 'Topic', topic2);
     msgStructs1 = readMessages(bSel1,'DataFormat','struct');
