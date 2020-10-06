@@ -34,15 +34,17 @@ def statesCallback(data):
     euler = euler_from_quaternion(quaternion)
     yaw = euler[2]
 
+
 def robotUnsafe(robx, roby, path):
     safety_tolerance = 10
     dists = [0]*len(path)
     i = 0
     for point in path:
         dists[i] = sqrt(pow((point[0] - robx), 2) + pow((point[1] - roby), 2))
-	i += 1
+    i += 1
     val = min(dists)
-    return val > safety_tolerance
+    return val > safety_tolerance, val
+
 
 def robotAtGoal(robx, roby, goalx, goaly):
     distance_tolerance = 1
@@ -118,34 +120,38 @@ def smoothPath(path):  # path is [(x1, y1), ..., (xend, yend)]
     return newPath
 
 
-def main(velocity, angle_deg):
+def main(velocity, angle_deg, log_file):
     rospy.init_node('pure_pursuit_cap', anonymous=True)
     velocity_publisher = rospy.Publisher('/jackal_velocity_controller/cmd_vel', Twist, queue_size=10)
     # velocity_publisher = rospy.Publisher('/husky_velocity_controller/cmd_vel', Twist, queue_size=10)
     rospy.Subscriber('/gazebo/model_states', ModelStates, statesCallback)
+    info = "{lin_vel}, {ang_vel} {angle}, {mu}, {deviation}"
     rate = rospy.Rate(10)
     vel_msg = Twist()
-    angle = radians(angle_deg) #in radians
+    angle = radians(angle_deg)  # in radians
     branching_point = (10, 0)
     end_point = (branching_point[0] + 10*cos(angle), 10*sin(angle))
     print(end_point)
-    #waypoints = [(10, 0), (0, 10), (10, 10), (0, 0)]
+    # waypoints = [(10, 0), (0, 10), (10, 10), (0, 0)]
     waypoints = [branching_point, end_point]
     path = injectPoints(waypoints)
     lookAheadDistance = 2
     lastIndex = 0
-    lastLookAheadIndex = 0
+    # lastLookAheadIndex = 0
     lastFractionalIndex = 0
     lookAheadPoint = waypoints[0]
-    atGoalHack = 0 # needs to be fixed
-    i = 0
+    atGoalHack = 0  # needs to be fixed
+    # i = 0
 
     while not rospy.is_shutdown():
-        if robotUnsafe(x, y, path):
+        unsafe, robot_deviation = robotUnsafe(x, y, path)
+        if unsafe:
             print("unsafe")
             vel_msg.linear.x = 0
             vel_msg.angular.z = 0
             velocity_publisher.publish(vel_msg)
+            log_file.write(info.format(lin_vel=0, ang_vel=0, angle=angle_deg,
+                                       mu="???", deviation=robot_deviation))
             break
 
         if robotAtGoal(x, y, waypoints[-1][0], waypoints[-1][1]) and lastIndex == len(waypoints) - 1:
@@ -154,6 +160,8 @@ def main(velocity, angle_deg):
             vel_msg.linear.x = 0
             vel_msg.angular.z = 0
             velocity_publisher.publish(vel_msg)
+            log_file.write(info.format(lin_vel=0, ang_vel=0, angle=angle_deg,
+                                       mu="???", deviation=robot_deviation))
             break
 
         lookAheadPoint, lastIndex, lastFractionalIndex = getLookAheadPoint(waypoints, x, y, lookAheadDistance,
@@ -161,7 +169,7 @@ def main(velocity, angle_deg):
                                                                            lookAheadPoint)
         goal_pose_x = lookAheadPoint[0]
         goal_pose_y = lookAheadPoint[1]
-																																																																																																																
+
         # linear velocity in the x-axis:
         vel_msg.linear.x = velocity
         vel_msg.linear.y = 0
@@ -172,10 +180,14 @@ def main(velocity, angle_deg):
         vel_msg.angular.y = 0
         vel_msg.angular.z = 2 * (atan2(goal_pose_y - y, goal_pose_x - x) - yaw)
 
-        # Publishing our vel_msg
+        # publishing our vel_msg
         velocity_publisher.publish(vel_msg)
         rate.sleep()
         atGoalHack += 1
+
+        # writing to the log file
+        log_file.write(info.format(lin_vel=vel_msg.linear.x, ang_vel=vel_msg.angular.z,
+                                   angle=angle_deg, mu="???", deviation=robot_deviation))
     # process.kill()
 
 
@@ -188,18 +200,21 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     bag_location = "bagfiles/trainingData" + args.run_num
+    log_file = "training_log" + args.run_num + ".txt"
+
+    # file format: velocity, angle, mu, path_deviation
+    file = open(log_file, "w")
 
     # process = subprocess.Popen(["rosbag", "record", "-O", bag_location, "/gazebo/model_states", "/odometry/filtered"])
 
     velocity = 0.0
     # comp_angle = 0
 
-
     run_num = int(args.run_num)
     if run_num % 3 == 0:
- 		velocity = 2.0
+        velocity = 2.0
     elif run_num % 3 == 1:
-    	velocity = 0.2
+        velocity = 0.2
     elif run_num % 3 == 2:
         velocity = 1.0
 
@@ -208,7 +223,7 @@ if __name__ == "__main__":
     if run_num in run_list:
         comp_angle = 0
     elif run_num in [x+3 for x in run_list]:
-		comp_angle = 20
+        comp_angle = 20
     elif run_num in [x+6 for x in run_list]:
         comp_angle = 40
     elif run_num in [x+9 for x in run_list]:
@@ -227,8 +242,5 @@ if __name__ == "__main__":
         comp_angle = 180
     '''
 
-   
-
-
     print("velocity: ", velocity, '\n', "angle: ", args.angle)
-    main(velocity, int(args.angle))
+    main(velocity, int(args.angle), file)
