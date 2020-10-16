@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import sys # for redirecting output in bash, could be removed
+#import time # for sleeping - time.sleep is commented out below right now
 import rospy
 import argparse
 import subprocess
@@ -233,6 +235,12 @@ def main(velocity, angle_deg, log_file, run_num):
                                    angle=angle_deg, deviation=robot_deviation))
    
     log_file.close()
+    print("kill me")
+    sys.stdout.flush()
+    #time.sleep(20)
+    raw_input("placeholder") # kill 0 sent from bash script not working, so you have to ctrl-c manually
+    
+    
     # terminate_process_and_children(proc)
     # signal_process_and_children(proc.pid, signal.SIGINT, True)
     #terminate_ros_node()
@@ -327,8 +335,7 @@ if __name__ == "__main__":
     
     # bag_location = "bagfiles/trainingData" + args.run_num
     
-    log_file = "logs/{run}_{env}_{vel}_{angle}.txt".format(run=run_num, env=env, vel=str(velocity), angle=str(angle))
-
+    log_file = "../logs/{run}_{env}_{vel}_{angle}.txt".format(run=run_num, env=env, vel=str(velocity), angle=str(angle)) # this needs to be fixed, right now you run test.sh from the bagfiles directory
     # file format: velocity, angle, path_deviation
     file = open(log_file, "w")
 
