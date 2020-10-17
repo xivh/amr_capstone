@@ -7,6 +7,7 @@ import argparse
 import subprocess
 from geometry_msgs.msg import Twist
 import numpy as np
+import keras
 from nav_msgs.msg import Odometry
 from gazebo_msgs.msg import ModelStates
 from math import pow, atan2, sqrt, ceil, sin, cos, pi, radians
@@ -269,29 +270,8 @@ if __name__ == "__main__":
     # angle = int(args.angle)
     # mu = float(args.mu)
 
-    # automatically calculate velocity
+    # get run number
     run = int(args.run_num)
-    if run % 10 == 1:
- 		velocity = 0.2
-    elif run % 10 == 2:
-    	velocity = 0.4
-    elif run % 10 == 3:
-        velocity = 0.6
-    elif run % 10 == 4:
-        velocity = 0.8
-    elif run % 10 == 5:
-        velocity = 1.0
-    elif run % 10 == 6:
-    	velocity = 1.2
-    elif run % 10 == 7:
-        velocity = 1.4
-    elif run % 10 == 8:
-        velocity = 1.6
-    elif run % 10 == 9:
-        velocity = 1.8
-    elif run % 10 == 0:
-        velocity = 2.0
-
     
     # automatically calculate angle
     run_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 
@@ -330,6 +310,10 @@ if __name__ == "__main__":
         mu = 0.09
     elif 240 < run:
         mu = 1
+    
+    # use neural network to choose velocity
+    model = keras.models.load_model('../NNet_all.h5')
+    velocity = model.predict([[mu, angle]])
 
     env = environments[mu]
     
