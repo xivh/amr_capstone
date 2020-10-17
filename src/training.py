@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+import sys # for redirecting output in bash, could be removed
+#import time # for sleeping - time.sleep is commented out below right now
 import rospy
 import argparse
 import subprocess
@@ -14,6 +16,13 @@ x = 0.0
 y = 0.0
 v = 0.0
 yaw = 0.0
+
+environments = {0.009: "ice_009", 
+                0.09: "ice_09", 
+                0.9: "ice_9", 
+                1: "control", 
+                1000: "mud"}
+
 
 
 def statesCallback(data):
@@ -35,8 +44,39 @@ def statesCallback(data):
     yaw = euler[2]
 
 
+def terminate_process_and_children(p):
+    import psutil
+    process = psutil.Process(p.pid)
+    for sub_process in process.children(recursive=True):
+        sub_process.send_signal(signal.SIGINT)
+    # p.wait()  # we wait for children to terminate
+    p.terminate()
+
+
+def signal_process_and_children(pid, signal_to_send, wait=False):
+    process = psutil.Process(pid)
+    for children in process.children(recursive=True):
+        if signal_to_send == 'suspend':
+            children.suspend()
+        elif signal_to_send == 'resume':
+            children.resume()
+        else:
+            children.send_signal(signal_to_send)
+    if wait:
+        process.wait()
+
+def terminate_ros_node():
+    list_cmd = subprocess.Popen("rosnode list", shell=True, stdout=subprocess.PIPE)
+    list_output = list_cmd.stdout.read()
+    retcode = list_cmd.wait()
+    assert retcode == 0, "List command returned %d" % retcode
+    for str in list_output.split("\n"):
+        #if (str.startswith(s)):
+        os.system("rosnode kill " + str)
+
+
 def robotUnsafe(robx, roby, path):
-    safety_tolerance = 10
+    safety_tolerance = 5
     dists = [0]*len(path)
     i = 0
     for point in path:
@@ -120,12 +160,12 @@ def smoothPath(path):  # path is [(x1, y1), ..., (xend, yend)]
     return newPath
 
 
-def main(velocity, angle_deg, log_file):
+def main(velocity, angle_deg, log_file, run_num):
     rospy.init_node('pure_pursuit_cap', anonymous=True)
     velocity_publisher = rospy.Publisher('/jackal_velocity_controller/cmd_vel', Twist, queue_size=10)
     # velocity_publisher = rospy.Publisher('/husky_velocity_controller/cmd_vel', Twist, queue_size=10)
     rospy.Subscriber('/gazebo/model_states', ModelStates, statesCallback)
-    info = "{lin_vel}, {ang_vel} {angle}, {mu}, {deviation}"
+    info = "{lin_vel}, {ang_vel}, {angle}, {deviation}\n"
     rate = rospy.Rate(10)
     vel_msg = Twist()
     angle = radians(angle_deg)  # in radians
@@ -143,6 +183,11 @@ def main(velocity, angle_deg, log_file):
     atGoalHack = 0  # needs to be fixed
     # i = 0
 
+    bag_location = "bagfiles/{env}/trainingData".format(env=environments[mu]) + run_num
+    command = "rosbag record -O " + bag_location + " /gazebo/model_states /odometry/filtered"
+    # proc = subprocess.Popen(command, stdin=subprocess.PIPE, shell=True, executable='/bin/bash')
+ 
+
     while not rospy.is_shutdown():
         unsafe, robot_deviation = robotUnsafe(x, y, path)
         if unsafe:
@@ -151,17 +196,17 @@ def main(velocity, angle_deg, log_file):
             vel_msg.angular.z = 0
             velocity_publisher.publish(vel_msg)
             log_file.write(info.format(lin_vel=0, ang_vel=0, angle=angle_deg,
-                                       mu="???", deviation=robot_deviation))
+                                       deviation=robot_deviation))
             break
 
         if robotAtGoal(x, y, waypoints[-1][0], waypoints[-1][1]) and lastIndex == len(waypoints) - 1:
         #if robotAtGoal(x, y, waypoints[-1][0], waypoints[-1][1]) and lastIndex == len(waypoints) - 1 and atGoalHack>100:
-            print("at goal")
+            print("at goal:", x, y)
             vel_msg.linear.x = 0
             vel_msg.angular.z = 0
             velocity_publisher.publish(vel_msg)
             log_file.write(info.format(lin_vel=0, ang_vel=0, angle=angle_deg,
-                                       mu="???", deviation=robot_deviation))
+                                       deviation=robot_deviation))
             break
 
         lookAheadPoint, lastIndex, lastFractionalIndex = getLookAheadPoint(waypoints, x, y, lookAheadDistance,
@@ -187,60 +232,113 @@ def main(velocity, angle_deg, log_file):
 
         # writing to the log file
         log_file.write(info.format(lin_vel=vel_msg.linear.x, ang_vel=vel_msg.angular.z,
-                                   angle=angle_deg, mu="???", deviation=robot_deviation))
-    # process.kill()
+                                   angle=angle_deg, deviation=robot_deviation))
+   
+    log_file.close()
+    print("kill me")
+    sys.stdout.flush()
+    #time.sleep(20)
+    raw_input("") # kill 0 sent from bash script not working, so you have to ctrl-c manually
+    
+    
+    # terminate_process_and_children(proc)
+    # signal_process_and_children(proc.pid, signal.SIGINT, True)
+    #terminate_ros_node()
+    #proc.send_signal(subprocess.signal.SIGINT)
+    #proc.kill()
+    #proc.terminate()
 
 
 if __name__ == "__main__":
+    
     parser = argparse.ArgumentParser(description='Set the velocity of the robot.')
     # parser.add_argument("--velocity", type=float, help='velocity of the robot', default=0.0)
-    parser.add_argument("--angle", type=float, help='angle of the robot in degrees', default=0.0)
-    parser.add_argument("--run_num", help='run of the robot', default=0)
+    # parser.add_argument("--angle", type=float, help='angle of the robot in degrees', default=0.0)
+    # parser.add_argument("--mu", type=float, help='mu of the terrain', default=0.0)
+    parser.add_argument("--run_num", help='run of the robot', default=0) 
     
     args = parser.parse_args()
-    
-    bag_location = "bagfiles/trainingData" + args.run_num
-    log_file = "training_log" + args.run_num + ".txt"
+    '''
+    velocity =float(rospy.get_param('~--velocity', 0.2))
+    run_num = str(rospy.get_param('~--run_num', 1))
+    angle = int(rospy.get_param('~--angle', 0))
+    mu = float(rospy.get_param('~--mu', 1))
+    '''
+    run_num = str(args.run_num)
+    # velocity = float(args.velocity)
+    # angle = int(args.angle)
+    # mu = float(args.mu)
 
-    # file format: velocity, angle, mu, path_deviation
+    # automatically calculate velocity
+    run = int(args.run_num)
+    if run % 10 == 1:
+ 		velocity = 0.2
+    elif run % 10 == 2:
+    	velocity = 0.4
+    elif run % 10 == 3:
+        velocity = 0.6
+    elif run % 10 == 4:
+        velocity = 0.8
+    elif run % 10 == 5:
+        velocity = 1.0
+    elif run % 10 == 6:
+    	velocity = 1.2
+    elif run % 10 == 7:
+        velocity = 1.4
+    elif run % 10 == 8:
+        velocity = 1.6
+    elif run % 10 == 9:
+        velocity = 1.8
+    elif run % 10 == 0:
+        velocity = 2.0
+
+    
+    # automatically calculate angle
+    run_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 
+                241, 242, 243, 244, 245, 246, 247, 248, 249, 250]
+    angle = 0
+    if run in run_list:
+        angle = 0
+    elif run in [x+10 for x in run_list]:
+	angle = 15
+    elif run in [x+20 for x in run_list]:
+        angle = 30
+    elif run in [x+30 for x in run_list]:
+        angle = 45
+    elif run in [x+40 for x in run_list]:
+        angle = 60
+    elif run in [x+50 for x in run_list]:
+        angle = 75
+    elif run in [x+60 for x in run_list]:
+        angle = 90
+    elif run in [x+70 for x in run_list]:
+        angle = 105
+    elif run in [x+80 for x in run_list]:
+        angle = 120
+    elif run in [x+90 for x in run_list]:
+        angle = 135
+    elif run in [x+100 for x in run_list]:
+        angle = 150
+    elif run in [x+110 for x in run_list]:
+        angle = 165
+
+    # automatically calculate mu
+    mu = 0
+    if run <= 120:
+        mu = 0.009
+    elif 120 < run <= 240:
+        mu = 0.09
+    elif 240 < run:
+        mu = 1
+
+    env = environments[mu]
+    
+    # bag_location = "bagfiles/trainingData" + args.run_num
+    
+    log_file = "../logs/{run}_{env}_{vel}_{angle}.txt".format(run=run_num, env=env, vel=str(velocity), angle=str(angle)) # this needs to be fixed, right now you run test.sh from the bagfiles directory
+    # file format: velocity, angle, path_deviation
     file = open(log_file, "w")
 
-    # process = subprocess.Popen(["rosbag", "record", "-O", bag_location, "/gazebo/model_states", "/odometry/filtered"])
-
-    velocity = 0.0
-    # comp_angle = 0
-
-    run_num = int(args.run_num)
-    if run_num % 3 == 0:
-        velocity = 2.0
-    elif run_num % 3 == 1:
-        velocity = 0.2
-    elif run_num % 3 == 2:
-        velocity = 1.0
-
-    '''
-    run_list = [1, 2, 3, 31, 32, 33, 61, 62, 63]
-    if run_num in run_list:
-        comp_angle = 0
-    elif run_num in [x+3 for x in run_list]:
-        comp_angle = 20
-    elif run_num in [x+6 for x in run_list]:
-        comp_angle = 40
-    elif run_num in [x+9 for x in run_list]:
-        comp_angle = 60
-    elif run_num in [x+12 for x in run_list]:
-        comp_angle = 80
-    elif run_num in [x+15 for x in run_list]:
-        comp_angle = 100
-    elif run_num in [x+18 for x in run_list]:
-        comp_angle = 120
-    elif run_num in [x+21 for x in run_list]:
-        comp_angle = 140
-    elif run_num in [x+24 for x in run_list]:
-        comp_angle = 160
-    elif run_num in [x+27 for x in run_list]:
-        comp_angle = 180
-    '''
-
-    print("velocity: ", velocity, '\n', "angle: ", args.angle)
-    main(velocity, int(args.angle), file)
+    print("velocity: ", velocity, "angle: ", angle)
+    #print(angle, args.angle)
+    main(velocity, angle, file, run_num)
