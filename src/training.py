@@ -238,7 +238,7 @@ def main(velocity, angle_deg, log_file, run_num):
     print("kill me")
     sys.stdout.flush()
     #time.sleep(20)
-    raw_input("placeholder") # kill 0 sent from bash script not working, so you have to ctrl-c manually
+    raw_input("") # kill 0 sent from bash script not working, so you have to ctrl-c manually
     
     
     # terminate_process_and_children(proc)
