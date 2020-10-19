@@ -313,7 +313,7 @@ if __name__ == "__main__":
     
     # use neural network to choose velocity
     model = keras.models.load_model('../NNet_all.h5')
-    velocity = model.predict([[mu, angle]])
+    velocity = model.predict([[mu, angle, 1]])
 
     env = environments[mu]
     
