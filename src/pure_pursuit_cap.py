@@ -17,7 +17,8 @@ def statesCallback(data):
     global x, y, v, yaw
     # find index of slash
     name = data.name
-    index = name.index("jackal")
+    #print(name)
+    index = 1 #name.index('jackal')
     #index = name.index("/")
     x = data.pose[index].position.x
     y = data.pose[index].position.y
@@ -35,7 +36,7 @@ def robotAtGoal(robx, roby, goalx, goaly):
     distance_tolerance = 1
     val = sqrt(pow((goalx - robx), 2) + pow((goaly - roby), 2)) 
     
-    print("distance:", val, val <= distance_tolerance)
+    #print("distance:", val, val <= distance_tolerance)
     return val <= distance_tolerance
 
 def getLookAheadPoint(waypoints, robx, roby, lookAheadDistance, lastIndex, lastFractionalIndex, lastLookAhead):
@@ -58,7 +59,7 @@ def getLookAheadPoint(waypoints, robx, roby, lookAheadDistance, lastIndex, lastF
         discriminant = sqrt(discriminant)
         t1 = (-b - discriminant)/(2*a)
         t2 = (-b + discriminant)/(2*a)
-        print('t guys', t1, t2)
+        #print('t guys', t1, t2)
         if 0 <= t1 <= 1 and j+t1 > lastFractionalIndex:
             return (E[0] + t1*d[0], E[1] + t1*d[1]), j, j+t1
         if 0 <= t2 <= 1 and j+t2 > lastFractionalIndex:
