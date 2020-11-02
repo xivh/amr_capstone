@@ -14,7 +14,7 @@ import numpy as np
 import keras
 from nav_msgs.msg import Odometry
 from gazebo_msgs.msg import ModelStates
-from math import pow, atan2, sqrt, ceil, sin, cos, pi, radians
+from math import pow, atan2, sqrt, ceil, sin, cos, pi, radians, degrees
 from tf.transformations import euler_from_quaternion
 
 x = 0.0
@@ -89,18 +89,14 @@ def terminate_ros_node():
 
 
 def robotUnsafe(robx, roby, path):
-    # print("hi")
     safety_tolerance = 2
     dists = [0] * len(path)
     i = 0
     for point in path:
         dists[i] = sqrt(pow((point[0] - robx), 2) + pow((point[1] - roby), 2))
-        # print(i)
         i = i + 1
-    # print(dists),
     val = min(dists)
     closest_index = dists.index(val)
-    # print(val)
     return val > safety_tolerance, val, closest_index
 
 
@@ -155,10 +151,8 @@ def injectPoints(waypoints):
         vector = (vector[0] / d * spacing, vector[1] / d * spacing)
         for i in range(0, num_points_that_fit):
             new_list = (start_point[0] + vector[0] * i, start_point[1] + vector[1] * i)
-            # print(new_list)
             new_points.append(new_list)
         new_points.append(end_point)
-    # print(new_points)
     return new_points
 
 
@@ -205,9 +199,8 @@ def vel_pid(vg, vc, dt):
 
 
 # def main(velocity, angle_deg, log_file, run_num):
-def main(velocity, angle_deg, run_num):
+def main(angle_deg, run_num):
     velocity_publisher = rospy.Publisher('/jackal_velocity_controller/cmd_vel', Twist, queue_size=10)
-    # velocity_publisher = rospy.Publisher('/husky_velocity_controller/cmd_vel', Twist, queue_size=10)
     rospy.Subscriber('/gazebo/model_states', ModelStates, statesCallback)
     info = "{lin_vel}, {ang_vel}, {angle}, {deviation}\n"
     rate = rospy.Rate(10)
@@ -215,13 +208,11 @@ def main(velocity, angle_deg, run_num):
     angle = radians(angle_deg)  # in radians
     branching_point = (10, 0)
     end_point = (branching_point[0] + 10 * cos(angle), 10 * sin(angle))
-    print(end_point)
-    # waypoints = [(10, 0), (0, 10), (10, 10), (0, 0)]
     waypoints = [branching_point, end_point]
     waypoints2 = [(0, 0), branching_point, end_point]
-    path = injectPoints(waypoints2)
-    lookAheadDistance = 10
-    horizon = 10
+    p = injectPoints(waypoints2)
+    path = smoothPath(p)
+    lookAheadDistance = 2
     lastIndex = 0
     # lastLookAheadIndex = 0
     lastFractionalIndex = 0
@@ -229,10 +220,10 @@ def main(velocity, angle_deg, run_num):
     atGoalHack = 0  # needs to be fixed
     start_angle = yaw
     # i = 0
+    # this is kind of a cop out, we should fix this later
+    fut_velocities = [0.3]*len(path)
+    pred_vels = [0, 0, 0, 0, 0]
 
-    # bag_location = "bagfiles/{env}/trainingData".format(env=environments[mu]) + run_num
-    # command = "rosbag record -O " + bag_location + " /gazebo/model_states /odometry/filtered /imu/data"
-    # proc = subprocess.Popen(command, stdin=subprocess.PIPE, shell=True, executable='/bin/bash')
 
     while not rospy.is_shutdown():
         path = injectPoints(waypoints2)
@@ -242,20 +233,15 @@ def main(velocity, angle_deg, run_num):
             vel_msg.linear.x = 0
             vel_msg.angular.z = 0
             velocity_publisher.publish(vel_msg)
-            # log_file.write(info.format(lin_vel=0, ang_vel=0, angle=angle_deg,
-            #                           deviation=robot_deviation))
+            print(fut_velocities)
             break
-        # print(unsafe)
-        # print(robot_deviation)
 
         if robotAtGoal(x, y, waypoints[-1][0], waypoints[-1][1]) and lastIndex == len(waypoints) - 1:
-            # if robotAtGoal(x, y, waypoints[-1][0], waypoints[-1][1]) and lastIndex == len(waypoints) - 1 and atGoalHack>100:
             print("at goal:", x, y)
             vel_msg.linear.x = 0
             vel_msg.angular.z = 0
             velocity_publisher.publish(vel_msg)
-            # log_file.write(info.format(lin_vel=0, ang_vel=0, angle=angle_deg,
-            #                           deviation=robot_deviation))
+            print(fut_velocities)
             break
 
         lookAheadPoint, lastIndex, lastFractionalIndex = getLookAheadPoint(waypoints, x, y, lookAheadDistance,
@@ -265,15 +251,33 @@ def main(velocity, angle_deg, run_num):
         goal_pose_y = lookAheadPoint[1]
 
         # mu = mu[horizon] ## This is just a general concept for when we don't have a constant mu
-        horizon_point1 = path[closest_index + horizon]
-        horizon_point2 = path[closest_index + horizon + 1]
-        # Estimate angle from starting pose
-        angl = atan2(horizon_point2[1] - horizon_point1[1], horizon_point2[0] - horizon_point1[0]) - start_angle
-        # estimate angle from current pose
-        #angl = atan2(horizon_point2[1] - horizon_point1[1], horizon_point2[0] - horizon_point1[0]) - yaw
-        fut_velocity = model.predict([[mu, angl]])[0][0]
+        try:
+            horizon_point1 = path[closest_index + horizon]
+            horizon_point2 = path[closest_index + horizon + 1]
+        except IndexError as e:
+            horizon_point1 = path[-2]
+            horizon_point2 = path[-1]
+        horizon = 1
+        while l < 6:
+            # mu = mu[horizon] ## This is just a general concept for when we don't have a constant mu
+            horizon_point1 = path[closest_index + horizon]
+            horizon_point2 = path[closest_index + horizon + 1]
+            # Estimate angle from starting pose
+            angl = atan2(horizon_point2[1] - horizon_point1[1], horizon_point2[0] - horizon_point1[0]) - start_angle
+            # estimate angle from current pose
+            # angl = atan2(horizon_point2[1] - horizon_point1[1], horizon_point2[0] - horizon_point1[0]) - yaw
+            fut_velocity = model.predict([[mu, angl]])[0][0]
+            pred_vels[horizon] = fut_velocity
+            horizon = horizon + 1
+        # Current Measure of Safety is slowest but how will that be with more complex systems
+        vel = min(pred_vels)
+        #if (closest_index + horizon) < len(fut_velocities):
+            #fut_velocities[closest_index + horizon] = fut_velocity
         # linear velocity in the x-axis:
-        vel_msg.linear.x = fut_velocity
+        #test = fut_velocities[closest_index - 1]
+        #print(test)
+        #print(ang)
+        vel_msg.linear.x = vel
         vel_msg.linear.y = 0
         vel_msg.linear.z = 0
 
@@ -311,8 +315,10 @@ if __name__ == "__main__":
     rospy.init_node('capstone_nodes', anonymous=True)
 
     # get run number
-    run = rospy.get_param('~run')
-    angle = rospy.get_param('~angle')
+    run = 246
+    angle = 45
+    # run = rospy.get_param('~run')
+    # angle = rospy.get_param('~angle')
     run_num = str(run)
 
     # automatically calculate angle
@@ -349,7 +355,24 @@ if __name__ == "__main__":
     # file format: velocity, angle, path_deviation
     # file = open(log_file, "w")
 
-    print("velocity: ", velocity, "angle: ", angle)
+    # print("velocity: ", velocity, "angle: ", angle)
     # print(angle, args.angle)
     # main(velocity, angle, file, run_num)
-    main(velocity, angle, run_num)
+    main(angle, run_num)
+
+    horizon = 1
+    while l < 6:
+        # mu = mu[horizon] ## This is just a general concept for when we don't have a constant mu
+        horizon_point1 = path[closest_index + horizon]
+        horizon_point2 = path[closest_index + horizon + 1]
+        # Estimate angle from starting pose
+        angl = atan2(horizon_point2[1] - horizon_point1[1], horizon_point2[0] - horizon_point1[0]) - start_angle
+        # estimate angle from current pose
+        # angl = atan2(horizon_point2[1] - horizon_point1[1], horizon_point2[0] - horizon_point1[0]) - yaw
+        fut_velocity = model.predict([[mu, angl]])[0][0]
+        pred_vels[horizon] = fut_velocity
+        horizon = horizon + 1
+    # Current Measure of Safety is slowest but how will that be with more complex systems
+    vel = min(pred_vels)
+    # linear velocity in the x-axis:
+    vel_msg.linear.x = vel
