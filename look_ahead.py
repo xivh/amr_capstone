@@ -251,32 +251,32 @@ def main(angle_deg, run_num):
         goal_pose_y = lookAheadPoint[1]
 
         # mu = mu[horizon] ## This is just a general concept for when we don't have a constant mu
-        try:
-            horizon_point1 = path[closest_index + horizon]
-            horizon_point2 = path[closest_index + horizon + 1]
-        except IndexError as e:
-            horizon_point1 = path[-2]
-            horizon_point2 = path[-1]
         horizon = 1
         while l < 6:
             # mu = mu[horizon] ## This is just a general concept for when we don't have a constant mu
-            horizon_point1 = path[closest_index + horizon]
-            horizon_point2 = path[closest_index + horizon + 1]
+            try:
+                horizon_point1 = path[closest_index + horizon]
+                horizon_point2 = path[closest_index + horizon + 1]
+            except IndexError as e:
+                horizon_point1 = path[-2]
+                horizon_point2 = path[-1]
             # Estimate angle from starting pose
-            angl = atan2(horizon_point2[1] - horizon_point1[1], horizon_point2[0] - horizon_point1[0]) - start_angle
+            #a = atan2(horizon_point2[1] - horizon_point1[1], horizon_point2[0] - horizon_point1[0]) - start_angle
             # estimate angle from current pose
-            # angl = atan2(horizon_point2[1] - horizon_point1[1], horizon_point2[0] - horizon_point1[0]) - yaw
-            fut_velocity = model.predict([[mu, angl]])[0][0]
+            a = atan2(horizon_point2[1] - horizon_point1[1], horizon_point2[0] - horizon_point1[0]) - yaw
+            ang = abs(degrees(a))
+            fut_velocity = model.predict([[mu, ang]])[0][0]
             pred_vels[horizon] = fut_velocity
             horizon = horizon + 1
         # Current Measure of Safety is slowest but how will that be with more complex systems
         vel = min(pred_vels)
         #if (closest_index + horizon) < len(fut_velocities):
             #fut_velocities[closest_index + horizon] = fut_velocity
-        # linear velocity in the x-axis:
         #test = fut_velocities[closest_index - 1]
         #print(test)
         #print(ang)
+
+        # linear velocity in the x-axis:
         vel_msg.linear.x = vel
         vel_msg.linear.y = 0
         vel_msg.linear.z = 0
@@ -359,20 +359,3 @@ if __name__ == "__main__":
     # print(angle, args.angle)
     # main(velocity, angle, file, run_num)
     main(angle, run_num)
-
-    horizon = 1
-    while l < 6:
-        # mu = mu[horizon] ## This is just a general concept for when we don't have a constant mu
-        horizon_point1 = path[closest_index + horizon]
-        horizon_point2 = path[closest_index + horizon + 1]
-        # Estimate angle from starting pose
-        angl = atan2(horizon_point2[1] - horizon_point1[1], horizon_point2[0] - horizon_point1[0]) - start_angle
-        # estimate angle from current pose
-        # angl = atan2(horizon_point2[1] - horizon_point1[1], horizon_point2[0] - horizon_point1[0]) - yaw
-        fut_velocity = model.predict([[mu, angl]])[0][0]
-        pred_vels[horizon] = fut_velocity
-        horizon = horizon + 1
-    # Current Measure of Safety is slowest but how will that be with more complex systems
-    vel = min(pred_vels)
-    # linear velocity in the x-axis:
-    vel_msg.linear.x = vel
