@@ -5,11 +5,14 @@ topic1 = {'/gazebo/model_states'};
 
 for i = 1:length(bags)
     name = convertStringsToChars(bags(i).name);
-    r = strfind(name,'n');
-    index = r
-    %index = r(length(r)-1);
-    n = extractBetween(name,index+1,length(name)-4);
-    run = str2num(n{1});
+    r = strfind(name,'a');
+    index = r(length(r)-1);
+    split_name = split(name, '_');
+    
+    run_string = split_name(3);
+    run = split(run_string, 'run');
+    run = run(2);
+    run = str2double(run)
     
     bag = rosbag(bags(i).name);
     bSel1 = select(bag,'Topic', topic1);
