@@ -37,20 +37,18 @@ for i = 1:length(td) % this only works on sorted arrays - also should start @ 2?
     a = td(i,3);
     t = td(i,4);
     s = td(i,5);
-    if ([mu, a, t, s] == curr)
-        'a'
+    if ([mu, a, t, s] == curr) % same combo
         if v > max_v
             max_v = v;
         end
-    else
-        filtered = [filtered;prev, max_v]; % could fail if prev is empty
-        if s == 0
-            failures = [failures; prev(1:3)]; % store failure (mu, a, t)
-        elseif s == 1
-            successes = [successes; prev(1:3)];
+    else % new combo
+        filtered = [filtered; curr, max_v]; % could fail if prev is empty
+        if curr(4) == 0 % currently combo is a failure - don't use s!
+            failures = [failures; curr(1:3)]; % store failure (mu, a, t)
+        elseif curr(4) == 1 % current combo is a success
+            successes = [successes; curr(1:3)];
         end
         curr = [mu, a, t, s];
-        prev = curr;
         max_v = v;
     end
 end
@@ -61,12 +59,24 @@ for i = 1:length(filtered)
     is_failure = sum(ismember(failures, filtered(i, 1:3), 'rows'));
     if sum(ismember(condensed(:,1:3), filtered(i, 1:3), 'rows'))
         continue % do not add to condensed if already there
-    elseif is_success & is_failure % could be replaced w/ is_failure only?
-        condensed = [condensed; filtered(i, 1:3), 0];
-    elseif is_success
+    elseif is_failure % combo is failure or both success and failure
+        if is_success % failed sometimes, succeeded sometimes
+            max_safe_v = 0; % max velocity with no failures below it
+            for j = 1:length(td) % inefficient!!!
+                if [td(j,1), td(j,3), td(j,4)] == filtered(i, 1:3) % td is sorted!
+                    if td(j,5) == 1 % success
+                        max_safe_v = td(j,2);
+                    else
+                        break % break on first failure
+                    end
+                end
+            end
+            condensed = [condensed; filtered(i, 1:3), max_safe_v];
+        else % only failed
+            condensed = [condensed; filtered(i, 1:3), 0];
+        end
+    elseif is_success % just a success - max velocity
         condensed = [condensed; filtered(i, 1:3), filtered(i, 5)];
-    elseif is_failure
-        condensed = [condensed; filtered(i, 1:3), 0];
     end
 end
 condensed = condensed(2:end,:); % because my first if statement fails on empty array
