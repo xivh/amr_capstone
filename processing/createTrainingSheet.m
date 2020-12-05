@@ -7,6 +7,7 @@ close all
 
 bags = dir('*.bag'); % this calls/lists all bag files in directory
 training_data = zeros(length(bags), 6);
+empty_runs = [];
 
 for i = 1:length(bags)
     %% Collect data from run number
@@ -145,39 +146,33 @@ for i = 1:length(bags)
         goal_y = 2.588190451000000;
     end
     
-    % calculate mu
+   % calculate mu
     mu = 0;
-    if run <= 960
+    if run <= 600
         mu = 0.009;
-    elseif (960 < run) && (run <= 1920)
+    elseif (600 < run) && (run <= 1200)
         mu = 0.09;
-    elseif (1920 < run) && (run <= 2880)
+    elseif (1200 < run) && (run <= 1800)
         mu = 1;
-    elseif (2880 < run) && (run <= 3840)
+    elseif (1800 < run) && (run <= 2400)
         mu = 0.05;
-    elseif 3840 < run
+    elseif 2400 < run
         mu = 0.5;
     end
 
     % calculate tolerance threshold
-    t_num = mod(run, 960);
+    t_num = mod(run, 600);
     tolerance = 0;
     if t_num <= 120
-        tolerance = 0.5;
-    elseif (120 < t_num) && (t_num <= 240)
         tolerance = 1;
-    elseif (240 < t_num) && (t_num <= 360)
+    elseif (120 < t_num) && (t_num <= 240)
         tolerance = 1.5;
-    elseif (360 < t_num) && (t_num <= 480)
+    elseif (240 < t_num) && (t_num <= 360)
         tolerance = 2;
-    elseif (480 < t_num) && (t_num <= 600)
+    elseif (360 < t_num) && (t_num <= 480)
         tolerance = 2.5;
-    elseif (600 < t_num) && (t_num <= 720)
+    elseif (480 < t_num) && (t_num <= 600)
         tolerance = 3;
-    elseif (720 < t_num) && (t_num <= 840)
-        tolerance = 3.5;
-    elseif (840 < t_num) && (t_num <= 960)
-        tolerance = 4;
     end
 
     %% Collect data from bag file
@@ -224,9 +219,11 @@ for i = 1:length(bags)
         fprintf('run %i failed\n', run)
         row = [run, -1, -1, -1, -1, -1];
         training_data(i,:) = row;
+        empty_runs = [empty_runs; run];
     end
 end
 
 csvwrite('training_data.csv', training_data)
+csvwrite('empty_runs.csv', empty_runs)
 done = "done"
 
