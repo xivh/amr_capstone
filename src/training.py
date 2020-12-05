@@ -7,6 +7,7 @@ import argparse
 import subprocess
 from geometry_msgs.msg import Twist
 import numpy as np
+#import keras
 from nav_msgs.msg import Odometry
 from gazebo_msgs.msg import ModelStates
 from math import pow, atan2, sqrt, ceil, sin, cos, pi, radians
@@ -160,8 +161,8 @@ def smoothPath(path):  # path is [(x1, y1), ..., (xend, yend)]
     return newPath
 
 
-def main(velocity, angle_deg, log_file, run_num):
-    rospy.init_node('pure_pursuit_cap', anonymous=True)
+#def main(velocity, angle_deg, log_file, run_num):
+def main(velocity, angle_deg, run_num):
     velocity_publisher = rospy.Publisher('/jackal_velocity_controller/cmd_vel', Twist, queue_size=10)
     # velocity_publisher = rospy.Publisher('/husky_velocity_controller/cmd_vel', Twist, queue_size=10)
     rospy.Subscriber('/gazebo/model_states', ModelStates, statesCallback)
@@ -183,8 +184,8 @@ def main(velocity, angle_deg, log_file, run_num):
     atGoalHack = 0  # needs to be fixed
     # i = 0
 
-    bag_location = "bagfiles/{env}/trainingData".format(env=environments[mu]) + run_num
-    command = "rosbag record -O " + bag_location + " /gazebo/model_states /odometry/filtered"
+    #bag_location = "bagfiles/{env}/trainingData".format(env=environments[mu]) + run_num
+    #command = "rosbag record -O " + bag_location + " /gazebo/model_states /odometry/filtered /imu/data"
     # proc = subprocess.Popen(command, stdin=subprocess.PIPE, shell=True, executable='/bin/bash')
  
 
@@ -195,8 +196,8 @@ def main(velocity, angle_deg, log_file, run_num):
             vel_msg.linear.x = 0
             vel_msg.angular.z = 0
             velocity_publisher.publish(vel_msg)
-            log_file.write(info.format(lin_vel=0, ang_vel=0, angle=angle_deg,
-                                       deviation=robot_deviation))
+            #log_file.write(info.format(lin_vel=0, ang_vel=0, angle=angle_deg,
+            #                           deviation=robot_deviation))
             break
 
         if robotAtGoal(x, y, waypoints[-1][0], waypoints[-1][1]) and lastIndex == len(waypoints) - 1:
@@ -205,8 +206,8 @@ def main(velocity, angle_deg, log_file, run_num):
             vel_msg.linear.x = 0
             vel_msg.angular.z = 0
             velocity_publisher.publish(vel_msg)
-            log_file.write(info.format(lin_vel=0, ang_vel=0, angle=angle_deg,
-                                       deviation=robot_deviation))
+            #log_file.write(info.format(lin_vel=0, ang_vel=0, angle=angle_deg,
+            #                           deviation=robot_deviation))
             break
 
         lookAheadPoint, lastIndex, lastFractionalIndex = getLookAheadPoint(waypoints, x, y, lookAheadDistance,
@@ -231,10 +232,10 @@ def main(velocity, angle_deg, log_file, run_num):
         atGoalHack += 1
 
         # writing to the log file
-        log_file.write(info.format(lin_vel=vel_msg.linear.x, ang_vel=vel_msg.angular.z,
-                                   angle=angle_deg, deviation=robot_deviation))
+        #log_file.write(info.format(lin_vel=vel_msg.linear.x, ang_vel=vel_msg.angular.z,
+        #                           angle=angle_deg, deviation=robot_deviation))
    
-    log_file.close()
+    #log_file.close()
     print("kill me")
     sys.stdout.flush()
     #time.sleep(20)
@@ -250,27 +251,26 @@ def main(velocity, angle_deg, log_file, run_num):
 
 
 if __name__ == "__main__":
-    
-    parser = argparse.ArgumentParser(description='Set the velocity of the robot.')
+    rospy.init_node('capstone_nodes', anonymous=True)
+    #parser = argparse.ArgumentParser(description='Set the velocity of the robot.')
     # parser.add_argument("--velocity", type=float, help='velocity of the robot', default=0.0)
     # parser.add_argument("--angle", type=float, help='angle of the robot in degrees', default=0.0)
     # parser.add_argument("--mu", type=float, help='mu of the terrain', default=0.0)
-    parser.add_argument("--run_num", help='run of the robot', default=0) 
+    #parser.add_argument("--run_num", help='run of the robot', default=0) 
     
-    args = parser.parse_args()
-    '''
-    velocity =float(rospy.get_param('~--velocity', 0.2))
-    run_num = str(rospy.get_param('~--run_num', 1))
-    angle = int(rospy.get_param('~--angle', 0))
-    mu = float(rospy.get_param('~--mu', 1))
-    '''
-    run_num = str(args.run_num)
+    #args = parser.parse_args()    
+    #run = str(args.run_num)
     # velocity = float(args.velocity)
     # angle = int(args.angle)
     # mu = float(args.mu)
 
+    # get run number
+    #run = int(args.run_num)
+    run = rospy.get_param('~run')    
+    run_num=str(run)
+    
+    
     # automatically calculate velocity
-    run = int(args.run_num)
     if run % 10 == 1:
  		velocity = 0.2
     elif run % 10 == 2:
@@ -291,8 +291,7 @@ if __name__ == "__main__":
         velocity = 1.8
     elif run % 10 == 0:
         velocity = 2.0
-
-    
+        
     # automatically calculate angle
     run_list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 
                 241, 242, 243, 244, 245, 246, 247, 248, 249, 250]
@@ -300,7 +299,7 @@ if __name__ == "__main__":
     if run in run_list:
         angle = 0
     elif run in [x+10 for x in run_list]:
-	angle = 15
+        angle = 15
     elif run in [x+20 for x in run_list]:
         angle = 30
     elif run in [x+30 for x in run_list]:
@@ -330,15 +329,20 @@ if __name__ == "__main__":
         mu = 0.09
     elif 240 < run:
         mu = 1
-
+    
+    # use neural network to choose velocity
+    #model = keras.models.load_model('../../NNet_all.h5')
+    #velocity = model.predict([[mu, angle, 1]])
+    #velocity = 0.2
     env = environments[mu]
     
     # bag_location = "bagfiles/trainingData" + args.run_num
     
-    log_file = "../logs/{run}_{env}_{vel}_{angle}.txt".format(run=run_num, env=env, vel=str(velocity), angle=str(angle)) # this needs to be fixed, right now you run test.sh from the bagfiles directory
+    #log_file = "../logs/{run}_{env}_{vel}_{angle}.txt".format(run=run_num, env=env, vel=str(velocity), angle=str(angle)) # this needs to be fixed, right now you run test.sh from the bagfiles directory
     # file format: velocity, angle, path_deviation
-    file = open(log_file, "w")
+    #file = open(log_file, "w")
 
     print("velocity: ", velocity, "angle: ", angle)
     #print(angle, args.angle)
-    main(velocity, angle, file, run_num)
+    #main(velocity, angle, file, run_num)
+    main(velocity, angle, run_num)
